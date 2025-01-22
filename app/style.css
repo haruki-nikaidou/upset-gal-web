@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background: url("https://imagedelivery.net/6gszw1iux5BH0bnwjXECTQ/5ebd2649-12d9-4b1f-6684-0477f1215300/public") no-repeat center center fixed;
+    background-size: cover;
+}
