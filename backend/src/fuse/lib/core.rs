@@ -79,10 +79,9 @@ impl Fuse {
         }
     }
 
-    #[allow(clippy::single_range_in_vec_init)]
     fn search_util(&self, pattern: &Pattern, string: &str) -> ScoreResult {
         let string = if self.is_case_sensitive {
-            String::from(string)
+           string.to_owned()
         } else {
             string.to_ascii_lowercase()
         };
@@ -94,7 +93,7 @@ impl Fuse {
         if pattern.text == string {
             return ScoreResult {
                 score: 0.,
-                ranges: vec![0..text_length],
+                ranges: [(0..text_length) as std::ops::Range<usize>].to_vec(),
             };
         }
 
@@ -106,8 +105,8 @@ impl Fuse {
         let mut index = string[best_location..].find(&pattern.text);
         let mut score;
 
-        while index.is_some() {
-            let i = best_location + index.unwrap();
+        while let Some(index_val) = index {
+            let i = best_location + index_val;
             score = utils::calculate_score(pattern.len, 0, i as i32, location, distance);
             threshold = threshold.min(score);
             best_location = i + pattern.len;
@@ -120,7 +119,7 @@ impl Fuse {
 
         score = 1.;
         let mut bin_max = pattern.len + text_length;
-        let mut last_bit_arr = vec![];
+        let mut last_bit_arr = Vec::with_capacity(string.len());
 
         let text_count = string_chars.len();
 
@@ -128,14 +127,14 @@ impl Fuse {
             let mut bin_min = 0;
             let mut bin_mid = bin_max;
             while bin_min < bin_mid {
-                if utils::calculate_score(
+                let score = utils::calculate_score(
                     pattern.len,
                     i as i32,
                     location,
                     location + bin_mid as i32,
                     distance,
-                ) <= threshold
-                {
+                );
+                if score <= threshold {
                     bin_min = bin_mid;
                 } else {
                     bin_max = bin_mid;
@@ -156,33 +155,41 @@ impl Fuse {
             };
 
             let mut current_location_index: usize = 0;
-            for j in (start as u64..=finish as u64).rev() {
-                let current_location: usize = (j - 1) as usize;
-                let char_match: u64 = *(if current_location < text_count {
-                    current_location_index = current_location_index
-                        .checked_sub(1)
-                        .unwrap_or(current_location);
-                    pattern
-                        .alphabet
-                        .get(string.as_bytes().get(current_location_index).unwrap())
-                } else {
-                    None
-                })
-                .unwrap_or(&0);
+
+            (start..=finish)
+                .rev()
+                .fold((threshold, best_location), |(threshold, best_location), j| {
+                let current_location = j - 1;
+
+                let char_match = (current_location < text_count)
+                    .then(|| {
+                        current_location_index = current_location_index
+                            .checked_sub(1)
+                            .unwrap_or(current_location);
+
+                        string.as_bytes()
+                            .get(current_location_index)
+                            .and_then(|b| pattern.alphabet.get(b))
+                            .copied()
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
 
                 if char_match != 0 {
                     match_mask_arr[current_location] = 1;
                 }
 
                 let j2 = j as usize;
+
                 bit_arr[j2] = ((bit_arr[j2 + 1] << 1) | 1) & char_match;
+
                 if i > 0 {
-                    bit_arr[j2] |= (((last_bit_arr[j2 + 1] | last_bit_arr[j2]) << 1_u64) | 1)
+                    bit_arr[j2] |= ((last_bit_arr[j2 + 1] | last_bit_arr[j2]) << 1 | 1u64)
                         | last_bit_arr[j2 + 1];
-                };
+                }
 
                 if (bit_arr[j2] & pattern.mask) != 0 {
-                    score = utils::calculate_score(
+                    let score = utils::calculate_score(
                         pattern.len,
                         i as i32,
                         location,
@@ -191,18 +198,21 @@ impl Fuse {
                     );
 
                     if score <= threshold {
-                        threshold = score;
-                        best_location = current_location;
+                        let new_threshold = score;
+                        let new_best_location = current_location;
 
-                        if best_location as i32 <= location {
-                            break;
-                        };
+                        if new_best_location as i32 <= location {
+                            return (new_threshold, new_best_location); // Early break by returning
+                        }
+
+                        return (new_threshold, new_best_location);
                     }
                 }
-            }
-            if utils::calculate_score(pattern.len, i as i32 + 1, location, location, distance)
-                > threshold
-            {
+
+                (threshold, best_location)
+            });
+            let score = utils::calculate_score(pattern.len, i as i32, location, location, distance);
+            if score > threshold {
                 break;
             }
 
@@ -211,7 +221,8 @@ impl Fuse {
 
         ScoreResult {
             score,
-            ranges: utils::find_ranges(&match_mask_arr).unwrap(),
+            // TODO: check the edge cases
+            ranges: utils::find_ranges(&match_mask_arr).unwrap_or_default(),
         }
     }
 
@@ -365,7 +376,7 @@ impl Fuse {
                 })
             }
         }
-        items.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+        items.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
         items
     }
 
@@ -423,6 +434,7 @@ impl Fuse {
 
             let mut property_results = vec![];
             item.properties().iter().for_each(|property| {
+                // TODO: edge case
                 let value = item.lookup(&property.value).unwrap_or_else(|| {
                     panic!(
                         "Lookup Failed: Lookup doesnt contain requested value => {}.",
@@ -463,7 +475,7 @@ impl Fuse {
             })
         }
 
-        result.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+        result.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
         result
     }
 }
@@ -657,13 +669,16 @@ impl Fuse {
             });
         });
 
+        
         let mut items = Arc::try_unwrap(item_queue)
             .ok()
             .unwrap()
             .into_inner()
             .unwrap()
             .unwrap();
-        items.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+        items.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
         completion(items);
+        
+        todo!()
     }
 }

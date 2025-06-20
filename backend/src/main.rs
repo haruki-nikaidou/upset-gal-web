@@ -1,3 +1,7 @@
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+
 mod alg;
 mod config;
 mod fuse;
@@ -12,6 +16,8 @@ async fn main() -> Result<()> {
     config::get_redis().await;
     alg::root::get_root().await;
     alg::root::get_tree().await;
+    
+    #[allow(clippy::expect_used)]
     color_eyre::install().expect("Failed to install error reporting");
 
     let app = Router::new()

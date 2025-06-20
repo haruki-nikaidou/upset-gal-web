@@ -39,8 +39,8 @@ pub fn find_ranges(mask: &[u8]) -> Result<Vec<Range<usize>>, String> {
             start = -1;
         }
     }
-
-    if *mask.last().unwrap() == 1 {
+    
+    if let Some(1) = mask.last() {
         ranges.push(start as usize..mask.len())
     }
     Ok(ranges)

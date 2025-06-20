@@ -6,19 +6,19 @@ use tokio::{fs, sync::OnceCell};
 /// Generate a hierarchical tree from a flat list of files.
 pub fn generate_tree(file_list: &BucketFiles) -> TreeNode {
     let mut root = TreeNode::new();
-
+    
     for file in file_list {
         let path_parts: Vec<&str> = file.file_path.split('/').collect();
         let mut pointer = &mut root;
         let last_idx = path_parts.len() - 1;
 
-        for part in &path_parts[..last_idx] {
+        for part in path_parts.iter().take(last_idx) {
             pointer = match pointer
                 .entry(part.to_string())
                 .or_insert_with(|| NodeValue::Node(TreeNode::new()))
             {
                 NodeValue::Node(node) => node,
-                NodeValue::File(_) => panic!("expected folder, found file"),
+                NodeValue::File(_) => unreachable!("File node should not exist here"),
             };
         }
 
@@ -40,6 +40,7 @@ pub struct Root {
 static ROOT_CELL: OnceCell<Root> = OnceCell::const_new();
 static TREE: OnceCell<TreeNode> = OnceCell::const_new();
 
+#[allow(clippy::expect_used)]
 async fn init_root() -> Root {
     load_root().await.expect("failed to load root data")
 }
@@ -74,6 +75,7 @@ pub fn build_tree(shinnku_tree: &TreeNode, galgame0_tree: &TreeNode) -> TreeNode
     let mut tree = TreeNode::new();
     tree.insert("shinnku".into(), NodeValue::Node(shinnku_tree.clone()));
 
+    #[allow(clippy::expect_used)]
     let galgame0_sub = galgame0_tree
         .get("合集系列")
         .and_then(|v| match v {

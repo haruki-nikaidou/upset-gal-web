@@ -50,6 +50,7 @@ pub async fn get_redis() -> &'static ConnectionManager {
         .await
 }
 
+#[allow(clippy::expect_used)]
 /// Does the heavy lifting once.
 async fn init_connection() -> ConnectionManager {
     let settings = load_config("config.toml").await.expect("load config");
